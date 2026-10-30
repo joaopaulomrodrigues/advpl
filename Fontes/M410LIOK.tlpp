@@ -1,0 +1,62 @@
+#include "tlpp-core.th"
+#include "totvs.ch"
+
+using namespace totvs.protheus.advpl
+
+/*/{Protheus.doc} M410LIOK
+Ponto de entrada executado na validação de cada linha do Pedido de Venda (MATA410).
+
+@type       Function
+@author     Equipe de Desenvolvimento
+@since      30/10/2026
+@version    1.0
+@param      Nil
+@return     lRet, Logical, Indica se a linha do pedido de venda está válida
+@obs        O ponto de entrada deve retornar .T. para permitir a inclusão/alteração
+            da linha ou .F. para bloqueá-la.
+/*/
+Function M410LIOK() as Logical
+
+    Local lRet       := .T. as Logical
+    Local cProduto   := "" as Character
+    Local cMsg       := "" as Character
+    Local nQuant     := 0 as Numeric
+    Local nPrcVen    := 0 as Numeric
+    Local nPosProd   := 0 as Numeric
+    Local nPosQuant  := 0 as Numeric
+    Local nPosPreco  := 0 as Numeric
+
+    // Localiza as colunas relevantes no aHeader/aCols da linha corrente.
+    nPosProd  := aScan(aHeader, {|aCol| AllTrim(aCol[2]) == "C6_PRODUTO"})
+    nPosQuant := aScan(aHeader, {|aCol| AllTrim(aCol[2]) == "C6_QTDVEN"})
+    nPosPreco := aScan(aHeader, {|aCol| AllTrim(aCol[2]) == "C6_PRCVEN"})
+
+    If nPosProd > 0
+        cProduto := AllTrim(aCols[n][nPosProd])
+    EndIf
+
+    If nPosQuant > 0
+        nQuant := aCols[n][nPosQuant]
+    EndIf
+
+    If nPosPreco > 0
+        nPrcVen := aCols[n][nPosPreco]
+    EndIf
+
+    // Exemplo de validação: produto, quantidade e preço devem estar informados.
+    If Empty(cProduto)
+        lRet := .F.
+        cMsg := "Informe o produto na linha do pedido de venda."
+    ElseIf nQuant <= 0
+        lRet := .F.
+        cMsg := "A quantidade vendida deve ser maior que zero."
+    ElseIf nPrcVen <= 0
+        lRet := .F.
+        cMsg := "O preço unitário deve ser maior que zero."
+    EndIf
+
+    If !lRet
+        Help(NIL, NIL, "M410LIOK", NIL, cMsg, 1, 0, NIL, NIL, NIL, NIL, NIL, {cMsg})
+    EndIf
+
+Return lRet
