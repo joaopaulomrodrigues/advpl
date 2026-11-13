@@ -1,0 +1,95 @@
+#include "tlpp-core.th"
+namespace custom.integration.soc
+
+class SocClient
+    private data cBaseUrl as character
+    private data cToken   as character
+    private data cEmpresa as character
+    private data nTimeout as numeric
+
+    public method new() as object
+    public method send(cVerb as character, cPath as character, oBody as object) as object
+    private method headers() as array
+endclass
+
+method SocClient::new() as object
+    ::cBaseUrl := AllTrim(SuperGetMV("MV_SOCURL" ,.F.,""))
+    ::cToken   := AllTrim(SuperGetMV("MV_SOCTOKN",.F.,""))
+    ::cEmpresa := AllTrim(SuperGetMV("MV_SOCEMP" ,.F.,""))
+    ::nTimeout := SuperGetMV("MV_SOCTMO",.F.,30)
+return self
+
+method SocClient::headers() as array
+    local aH := {}
+    aAdd(aH, "Content-Type: application/json; charset=utf-8")
+    aAdd(aH, "Accept: application/json")
+    aAdd(aH, "Authorization: Bearer " + ::cToken)
+    aAdd(aH, "X-SOC-Empresa: " + ::cEmpresa)
+return aH
+
+// HTTP 200/201 = sucesso; 400 = regra de negocio; 5xx = indisponibilidade
+method SocClient::send(cVerb as character, cPath as character, oBody as object) as object
+    local oRest, oResp, oRet
+    local cBody := "", cResp := "", cId := "", cErr := ""
+    local nHttp := 0, lOk := .F., cMsg := ""
+
+    if Empty(::cBaseUrl) .or. Empty(::cToken)
+        return SocResult():fail("Parametros MV_SOCURL/MV_SOCTOKN nao configurados", 0, "")
+    endif
+
+    try
+        if oBody != nil
+            cBody := FwNoAccent(oBody:toJson())
+        endif
+
+        oRest := FWRest():New(::cBaseUrl)
+        oRest:SetPath(cPath)
+        oRest:SetTimeout(::nTimeout)
+
+        SocLogger():info("SocClient", cVerb + " " + cPath + " body=" + cBody)
+
+        do case
+        case cVerb == "POST"
+            oRest:SetPostParams(cBody)
+            lOk := oRest:Post(::headers())
+        case cVerb == "PUT"
+            lOk := oRest:Put(::headers(), cBody)
+        otherwise
+            lOk := oRest:Get(::headers())
+        endcase
+
+        cResp := oRest:GetResult()
+        cErr  := oRest:GetLastError()
+        nHttp := Val(cValToChar(oRest:GetHTTPCode()))
+
+        oResp := JsonObject():New()
+        if !Empty(cResp)
+            cMsg := oResp:fromJson(cResp)
+        endif
+
+        do case
+        case nHttp == 200 .or. nHttp == 201
+            if oResp:hasProperty("id")
+                cId := cValToChar(oResp['id'])
+            elseif oResp:hasProperty("codigo")
+                cId := cValToChar(oResp['codigo'])
+            endif
+            oRet := SocResult():ok("Sucesso HTTP " + cValToChar(nHttp), cId, oResp)
+        case nHttp == 400
+            oRet := SocResult():fail("Rejeitado pelo SOC (400): " + SubStr(cResp,1,500), nHttp, cResp)
+        case nHttp == 401 .or. nHttp == 403
+            oRet := SocResult():fail("Falha de autenticacao/autorizacao SOC", nHttp, cResp)
+        case nHttp >= 500
+            oRet := SocResult():fail("Erro interno SOC (" + cValToChar(nHttp) + ")", nHttp, cResp)
+        otherwise
+            oRet := SocResult():fail("Retorno inesperado: " + cErr, nHttp, cResp)
+        endcase
+
+        if !oRet['success']
+            SocLogger():error("SocClient", oRet['message'])
+        endif
+    catch oEx
+        oRet := SocResult():fail("Excecao: " + oEx:description, 0, "")
+        SocLogger():error("SocClient", oEx:description + " | " + oEx:errorStack)
+    endtry
+return oRet

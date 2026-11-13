@@ -1,0 +1,76 @@
+#include "tlpp-core.th"
+namespace custom.integration.soc
+
+class SocServiceBase
+    protected data cAlias    as character
+    protected data cResource as character
+    protected data cKey      as character
+    protected data oClient   as object
+
+    public method new(cAlias as character, cResource as character) as object
+    public method incluir(cChave as character) as object
+    public method alterar(cChave as character) as object
+
+    protected method execute(cVerb as character, cChave as character) as object
+    protected method buildPayload() as object
+    protected method seekRecord(cChave as character) as logical
+    protected method required() as array
+    protected method keyOf() as character
+endclass
+
+method SocServiceBase::new(cAlias as character, cResource as character) as object
+    ::cAlias    := cAlias
+    ::cResource := cResource
+    ::cKey      := ""
+    ::oClient   := SocClient():new()
+return self
+
+method SocServiceBase::incluir(cChave as character) as object
+return ::execute("POST", cChave)
+
+method SocServiceBase::alterar(cChave as character) as object
+return ::execute("PUT", cChave)
+
+method SocServiceBase::keyOf() as character
+return AllTrim(::cKey)
+
+method SocServiceBase::execute(cVerb as character, cChave as character) as object
+    local oPay, oRet, aReq, nI
+    local cPath := AllTrim(SuperGetMV("MV_SOCPATH",.F.,"/api/v1")) + "/" + ::cResource
+    local aArea := GetArea()
+
+    try
+        ::cKey := cChave
+        if !::seekRecord(cChave)
+            return SocResult():fail(::cAlias + " nao encontrado: " + cChave, 0, "")
+        endif
+
+        oPay := ::buildPayload()
+
+        aReq := ::required()
+        for nI := 1 to Len(aReq)
+            if !oPay:hasProperty(aReq[nI]) .or. Empty(oPay[aReq[nI]])
+                return SocResult():fail("Campo obrigatorio vazio: " + aReq[nI], 0, "")
+            endif
+        next
+
+        if cVerb == "PUT"
+            cPath += "/" + FwHttpEncode(::keyOf())
+        endif
+
+        oRet := ::oClient:send(cVerb, cPath, oPay)
+        SocLogger():info(::cAlias, cChave + " -> " + cValToChar(oRet['success']) + " " + oRet['message'])
+    catch oEx
+        oRet := SocResult():fail("Excecao " + ::cAlias + ": " + oEx:description, 0, "")
+        SocLogger():error(::cAlias, oEx:description)
+    finally
+        RestArea(aArea)
+    endtry
+return oRet
+
+method SocServiceBase::buildPayload() as object
+return JsonObject():New()
+method SocServiceBase::seekRecord(cChave as character) as logical
+return .F.
+method SocServiceBase::required() as array
+return {}

@@ -1,0 +1,13 @@
+#include "tlpp-core.th"
+using namespace custom.integration.soc
+
+// Teste: inclui ou altera um funcionario
+user function SocTeste()
+    local oSvc := SocFuncionario():new()
+    local oRet := oSvc:incluir(xFilial("SRA") + "000123")
+
+    if !oRet['success'] .and. oRet['http'] == 400
+        oRet := oSvc:alterar(xFilial("SRA") + "000123")
+    endif
+    ConOut(oRet:toJson())
+return nil

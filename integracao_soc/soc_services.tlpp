@@ -1,0 +1,155 @@
+#include "tlpp-core.th"
+namespace custom.integration.soc
+
+// ---------- FUNCIONARIO (SRA) ----------
+class SocFuncionario from SocServiceBase
+    public method new() as object
+    protected method seekRecord(cChave as character) as logical
+    protected method buildPayload() as object
+    protected method required() as array
+endclass
+
+method SocFuncionario::new() as object
+    _Super:new("SRA", "funcionario")
+return self
+
+method SocFuncionario::seekRecord(cChave as character) as logical
+    DbSelectArea("SRA"); SRA->(DbSetOrder(1))
+return SRA->(DbSeek(cChave))
+
+method SocFuncionario::buildPayload() as object
+    local o := JsonObject():New()
+    o['codigoEmpresa']  := SocMapper():toSoc("FIL", SRA->RA_FILIAL, "")
+    o['matricula']      := AllTrim(SRA->RA_MAT)
+    o['nome']           := AllTrim(SRA->RA_NOME)
+    o['cpf']            := SocMapper():onlyNum(SRA->RA_CIC)
+    o['pis']            := SocMapper():onlyNum(SRA->RA_PIS)
+    o['rg']             := AllTrim(SRA->RA_RG)
+    o['dataNascimento'] := SocMapper():fmtDate(DtoS(SRA->RA_NASC))
+    o['sexo']           := SocMapper():sexo(SRA->RA_SEXO)
+    o['dataAdmissao']   := SocMapper():fmtDate(DtoS(SRA->RA_ADMISSA))
+    o['email']          := AllTrim(SRA->RA_EMAIL)
+    o['codigoCargo']    := SocMapper():toSoc("CARGO", SRA->RA_CODFUNC, "")
+    o['codigoSetor']    := SocMapper():toSoc("CC"   , SRA->RA_CC     , "")
+    o['codigoTurno']    := SocMapper():toSoc("TURNO", SRA->RA_TNOTRAB, "")
+    o['situacao']       := SocMapper():toSoc("SITUACAO", iif(Empty(SRA->RA_SITFOLH),"A",SRA->RA_SITFOLH), "ATIVO")
+return o
+
+method SocFuncionario::required() as array
+return {"matricula","nome","cpf","dataAdmissao","codigoCargo","codigoSetor"}
+
+// ---------- CARGO (SRJ) ----------
+class SocCargo from SocServiceBase
+    public method new() as object
+    protected method seekRecord(cChave as character) as logical
+    protected method buildPayload() as object
+    protected method required() as array
+endclass
+method SocCargo::new() as object
+    _Super:new("SRJ", "cargo")
+return self
+method SocCargo::seekRecord(cChave as character) as logical
+    DbSelectArea("SRJ"); SRJ->(DbSetOrder(1))
+return SRJ->(DbSeek(cChave))
+method SocCargo::buildPayload() as object
+    local o := JsonObject():New()
+    o['codigo'] := SocMapper():toSoc("CARGO", SRJ->RJ_FUNCAO, "")
+    o['nome']   := AllTrim(SRJ->RJ_DESC)
+    o['cbo']    := AllTrim(SRJ->RJ_CODCBO)
+return o
+method SocCargo::required() as array
+return {"codigo","nome"}
+
+// ---------- TURNO (SR6) ----------
+class SocTurno from SocServiceBase
+    public method new() as object
+    protected method seekRecord(cChave as character) as logical
+    protected method buildPayload() as object
+    protected method required() as array
+endclass
+method SocTurno::new() as object
+    _Super:new("SR6", "turno")
+return self
+method SocTurno::seekRecord(cChave as character) as logical
+    DbSelectArea("SR6"); SR6->(DbSetOrder(1))
+return SR6->(DbSeek(cChave))
+method SocTurno::buildPayload() as object
+    local o := JsonObject():New()
+    o['codigo']    := SocMapper():toSoc("TURNO", SR6->R6_TURNO, "")
+    o['descricao'] := AllTrim(SR6->R6_DESC)
+return o
+method SocTurno::required() as array
+return {"codigo","descricao"}
+
+// ---------- CENTRO DE CUSTO / SETOR (SI3) ----------
+class SocSetor from SocServiceBase
+    public method new() as object
+    protected method seekRecord(cChave as character) as logical
+    protected method buildPayload() as object
+    protected method required() as array
+endclass
+method SocSetor::new() as object
+    _Super:new("SI3", "setor")
+return self
+method SocSetor::seekRecord(cChave as character) as logical
+    DbSelectArea("SI3"); SI3->(DbSetOrder(1))
+return SI3->(DbSeek(cChave))
+method SocSetor::buildPayload() as object
+    local o := JsonObject():New()
+    o['codigo']        := SocMapper():toSoc("CC", SI3->I3_CUSTO, "")
+    o['nome']          := AllTrim(SI3->I3_DESC)
+    o['codigoUnidade'] := SocMapper():toSoc("FIL", SI3->I3_FILIAL, "")
+return o
+method SocSetor::required() as array
+return {"codigo","nome"}
+
+// ---------- FILIAL / UNIDADE (SM0) ----------
+class SocFilial from SocServiceBase
+    public method new() as object
+    protected method seekRecord(cChave as character) as logical
+    protected method buildPayload() as object
+    protected method required() as array
+endclass
+method SocFilial::new() as object
+    _Super:new("SM0", "unidade")
+return self
+method SocFilial::seekRecord(cChave as character) as logical
+    local aFil := FWArrFilAtu(cEmpAnt, AllTrim(cChave))
+return Len(aFil) > 0
+method SocFilial::buildPayload() as object
+    local o := JsonObject():New()
+    o['codigo']   := SocMapper():toSoc("FIL", AllTrim(SM0->M0_CODFIL), "")
+    o['nome']     := AllTrim(SM0->M0_FILIAL)
+    o['cnpj']     := SocMapper():onlyNum(SM0->M0_CGC)
+    o['endereco'] := AllTrim(SM0->M0_ENDCOB)
+    o['cidade']   := AllTrim(SM0->M0_CIDCOB)
+    o['uf']       := AllTrim(SM0->M0_ESTCOB)
+    o['cep']      := SocMapper():onlyNum(SM0->M0_CEPCOB)
+return o
+method SocFilial::required() as array
+return {"codigo","nome","cnpj"}
+
+// ---------- RESCISAO / AFASTAMENTO (SRA/SRG) ----------
+class SocDesligamento from SocServiceBase
+    public method new() as object
+    protected method seekRecord(cChave as character) as logical
+    protected method buildPayload() as object
+    protected method required() as array
+endclass
+method SocDesligamento::new() as object
+    _Super:new("SRG", "afastamento")
+return self
+method SocDesligamento::seekRecord(cChave as character) as logical
+    DbSelectArea("SRG"); SRG->(DbSetOrder(1))
+    DbSelectArea("SRA"); SRA->(DbSetOrder(1))
+return SRG->(DbSeek(cChave)) .and. SRA->(DbSeek(cChave))
+method SocDesligamento::buildPayload() as object
+    local o := JsonObject():New()
+    o['matricula']        := AllTrim(SRG->RG_MAT)
+    o['cpf']              := SocMapper():onlyNum(SRA->RA_CIC)
+    o['tipo']             := "DESLIGAMENTO"
+    o['dataDesligamento'] := SocMapper():fmtDate(DtoS(SRG->RG_DATADEM))
+    o['motivo']           := SocMapper():toSoc("MOTRES", SRG->RG_TIPORES, "")
+return o
+method SocDesligamento::required() as array
+return {"matricula","dataDesligamento"}

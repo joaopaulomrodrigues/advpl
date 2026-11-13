@@ -1,0 +1,35 @@
+#include "tlpp-core.th"
+namespace custom.integration.soc
+
+// Tipos De/Para: FIL, CC, CARGO, TURNO, SITUACAO, MOTRES
+class SocMapper
+    static method toSoc(cTipo as character, cProt as character, cDefault as character) as character
+    static method fmtDate(cD as character) as character
+    static method onlyNum(cV as character) as character
+    static method sexo(cV as character) as character
+endclass
+
+static method SocMapper::toSoc(cTipo as character, cProt as character, cDefault as character) as character
+    local cRet  := cDefault
+    local aArea := GetArea()
+    DbSelectArea("ZSC")
+    ZSC->(DbSetOrder(1))
+    if ZSC->(DbSeek(xFilial("ZSC") + PadR(cTipo,10) + PadR(cProt,30)))
+        cRet := AllTrim(ZSC->ZSC_SOC)
+    elseif Empty(cRet)
+        cRet := AllTrim(cProt)
+    endif
+    RestArea(aArea)
+return cRet
+
+static method SocMapper::fmtDate(cD as character) as character
+    if Empty(cD)
+        return ""
+    endif
+return SubStr(cD,7,2)+"/"+SubStr(cD,5,2)+"/"+SubStr(cD,1,4)
+
+static method SocMapper::onlyNum(cV as character) as character
+return StrTran(StrTran(StrTran(AllTrim(cV),".",""),"-",""),"/","")
+
+static method SocMapper::sexo(cV as character) as character
+return iif(AllTrim(cV)=="F","FEMININO","MASCULINO")

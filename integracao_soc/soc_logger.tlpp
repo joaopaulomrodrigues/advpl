@@ -1,0 +1,26 @@
+#include "tlpp-core.th"
+namespace custom.integration.soc
+
+class SocLogger
+    static method info(cOrigem as character, cMsg as character)
+    static method error(cOrigem as character, cMsg as character)
+    static method mask(cTxt as character) as character
+endclass
+
+static method SocLogger::info(cOrigem as character, cMsg as character)
+    FwLogMsg("INFO", /*cTransactionId*/, "SOCINTEG", cOrigem, "1", "01", SocLogger():mask(cMsg), 0, 0, {})
+return
+
+static method SocLogger::error(cOrigem as character, cMsg as character)
+    FwLogMsg("ERROR", /*cTransactionId*/, "SOCINTEG", cOrigem, "1", "01", SocLogger():mask(cMsg), 0, 0, {})
+    ConOut("[SOCINTEG][ERRO]["+cOrigem+"] " + cMsg)
+return
+
+// Nunca grava token em log
+static method SocLogger::mask(cTxt as character) as character
+    local cTok := SuperGetMV("MV_SOCTOKN",.F.,"")
+    cTxt := FwNoAccent(cTxt)
+    if !Empty(cTok)
+        cTxt := StrTran(cTxt, cTok, "***TOKEN***")
+    endif
+return cTxt
