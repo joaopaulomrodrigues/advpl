@@ -1,6 +1,14 @@
 #include "tlpp-core.th"
 namespace custom.integration.soc
 
+/*/{Protheus.doc} SocClient
+Cliente HTTP da API do SOC (FWRest). Lê URL, token, empresa e timeout dos parâmetros SX6.
+@type class
+@author Integracao SOC
+@since 13/11/2026
+@version 1.0
+@obs Parâmetros: MV_SOCURL, MV_SOCTOKN, MV_SOCEMP, MV_SOCTMO.
+/*/
 class SocClient
     private data cBaseUrl as character
     private data cToken   as character
@@ -12,14 +20,31 @@ class SocClient
     private method headers() as array
 endclass
 
-method SocClient::new() as object
+/*/{Protheus.doc} SocClient::new
+Construtor; carrega a configuração dos parâmetros.
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@return object, Instância de SocClient
+@example
+oCli := SocClient():new()
+/*/
+method new() as object class SocClient
     ::cBaseUrl := AllTrim(SuperGetMV("MV_SOCURL" ,.F.,""))
     ::cToken   := AllTrim(SuperGetMV("MV_SOCTOKN",.F.,""))
     ::cEmpresa := AllTrim(SuperGetMV("MV_SOCEMP" ,.F.,""))
     ::nTimeout := SuperGetMV("MV_SOCTMO",.F.,30)
 return self
 
-method SocClient::headers() as array
+/*/{Protheus.doc} SocClient::headers
+Monta os cabeçalhos HTTP (Content-Type, Accept, Authorization, empresa).
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@return array, Cabeçalhos
+@obs Ajustar o esquema de Authorization ao exigido pelo SOC.
+/*/
+method headers() as array class SocClient
     local aH := {}
     aAdd(aH, "Content-Type: application/json; charset=utf-8")
     aAdd(aH, "Accept: application/json")
@@ -27,8 +52,20 @@ method SocClient::headers() as array
     aAdd(aH, "X-SOC-Empresa: " + ::cEmpresa)
 return aH
 
-// HTTP 200/201 = sucesso; 400 = regra de negocio; 5xx = indisponibilidade
-method SocClient::send(cVerb as character, cPath as character, oBody as object) as object
+/*/{Protheus.doc} SocClient::send
+Envia a requisição ao SOC e converte a resposta em retorno padronizado.
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@param cVerb, character, POST, PUT ou GET
+@param cPath, character, Caminho do endpoint
+@param [oBody], object, JsonObject do corpo
+@return object, JsonObject (success, message, id, http)
+@obs 200/201 sucesso; 400 regra de negócio; 401/403 autenticação; >=500 indisponibilidade.
+@example
+oRet := SocClient():new():send("POST", "/api/v1/cargo", oPay)
+/*/
+method send(cVerb as character, cPath as character, oBody as object) as object class SocClient
     local oRest, oResp, oRet
     local cBody := "", cResp := "", cId := "", cErr := ""
     local nHttp := 0, lOk := .F., cMsg := ""

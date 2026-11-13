@@ -1,7 +1,14 @@
 #include "tlpp-core.th"
 namespace custom.integration.soc
 
-// Tipos De/Para: FIL, CC, CARGO, TURNO, SITUACAO, MOTRES
+/*/{Protheus.doc} SocMapper
+Tradução de dados Protheus -> SOC (De/Para na tabela ZSC) e formatadores.
+@type class
+@author Integracao SOC
+@since 13/11/2026
+@version 1.0
+@obs Tipos De/Para: FIL, CC, CARGO, TURNO, SITUACAO, MOTRES.
+/*/
 class SocMapper
     static method toSoc(cTipo as character, cProt as character, cDefault as character) as character
     static method fmtDate(cD as character) as character
@@ -9,7 +16,19 @@ class SocMapper
     static method sexo(cV as character) as character
 endclass
 
-static method SocMapper::toSoc(cTipo as character, cProt as character, cDefault as character) as character
+/*/{Protheus.doc} SocMapper::toSoc
+Converte um código Protheus para o código SOC consultando a ZSC.
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@param cTipo, character, Tipo do De/Para (FIL, CC, CARGO, TURNO...)
+@param cProt, character, Código no Protheus
+@param cDefault, character, Valor se não houver De/Para
+@return character, Código SOC (ou o código Protheus/default)
+@example
+cCargo := SocMapper():toSoc("CARGO", SRA->RA_CODFUNC, "")
+/*/
+static method toSoc(cTipo as character, cProt as character, cDefault as character) as character class SocMapper
     local cRet  := cDefault
     local aArea := GetArea()
     DbSelectArea("ZSC")
@@ -22,14 +41,38 @@ static method SocMapper::toSoc(cTipo as character, cProt as character, cDefault 
     RestArea(aArea)
 return cRet
 
-static method SocMapper::fmtDate(cD as character) as character
+/*/{Protheus.doc} SocMapper::fmtDate
+Converte data AAAAMMDD para DD/MM/AAAA.
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@param cD, character, Data em AAAAMMDD
+@return character, Data DD/MM/AAAA ou vazio
+/*/
+static method fmtDate(cD as character) as character class SocMapper
     if Empty(cD)
         return ""
     endif
 return SubStr(cD,7,2)+"/"+SubStr(cD,5,2)+"/"+SubStr(cD,1,4)
 
-static method SocMapper::onlyNum(cV as character) as character
+/*/{Protheus.doc} SocMapper::onlyNum
+Remove pontos, traços e barras (CPF, CNPJ, PIS, CEP).
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@param cV, character, Valor formatado
+@return character, Somente dígitos
+/*/
+static method onlyNum(cV as character) as character class SocMapper
 return StrTran(StrTran(StrTran(AllTrim(cV),".",""),"-",""),"/","")
 
-static method SocMapper::sexo(cV as character) as character
+/*/{Protheus.doc} SocMapper::sexo
+Traduz RA_SEXO (M/F) para o texto do SOC.
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@param cV, character, M ou F
+@return character, MASCULINO ou FEMININO
+/*/
+static method sexo(cV as character) as character class SocMapper
 return iif(AllTrim(cV)=="F","FEMININO","MASCULINO")

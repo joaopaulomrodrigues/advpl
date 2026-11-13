@@ -1,23 +1,58 @@
 #include "tlpp-core.th"
 namespace custom.integration.soc
 
+/*/{Protheus.doc} SocLogger
+Registro de logs da integração via FwLogMsg/ConOut, com máscara do token.
+@type class
+@author Integracao SOC
+@since 13/11/2026
+@version 1.0
+/*/
 class SocLogger
     static method info(cOrigem as character, cMsg as character)
     static method error(cOrigem as character, cMsg as character)
     static method mask(cTxt as character) as character
 endclass
 
-static method SocLogger::info(cOrigem as character, cMsg as character)
+/*/{Protheus.doc} SocLogger::info
+Grava log informativo.
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@param cOrigem, character, Classe/rotina de origem
+@param cMsg, character, Mensagem
+@example
+SocLogger():info("SocClient", "POST /funcionario")
+/*/
+static method info(cOrigem as character, cMsg as character) class SocLogger
     FwLogMsg("INFO", /*cTransactionId*/, "SOCINTEG", cOrigem, "1", "01", SocLogger():mask(cMsg), 0, 0, {})
 return
 
-static method SocLogger::error(cOrigem as character, cMsg as character)
+/*/{Protheus.doc} SocLogger::error
+Grava log de erro (FwLogMsg e ConOut).
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@param cOrigem, character, Classe/rotina de origem
+@param cMsg, character, Mensagem de erro
+@example
+SocLogger():error("SocClient", oEx:description)
+/*/
+static method error(cOrigem as character, cMsg as character) class SocLogger
     FwLogMsg("ERROR", /*cTransactionId*/, "SOCINTEG", cOrigem, "1", "01", SocLogger():mask(cMsg), 0, 0, {})
     ConOut("[SOCINTEG][ERRO]["+cOrigem+"] " + cMsg)
 return
 
-// Nunca grava token em log
-static method SocLogger::mask(cTxt as character) as character
+/*/{Protheus.doc} SocLogger::mask
+Remove acentos e oculta o token (MV_SOCTOKN) do texto.
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@param cTxt, character, Texto original
+@return character, Texto sem o token
+@obs Segurança: nunca gravar token em log.
+/*/
+static method mask(cTxt as character) as character class SocLogger
     local cTok := SuperGetMV("MV_SOCTOKN",.F.,"")
     cTxt := FwNoAccent(cTxt)
     if !Empty(cTok)

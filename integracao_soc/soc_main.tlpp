@@ -1,7 +1,17 @@
 #include "tlpp-core.th"
 using namespace custom.integration.soc
 
-// Teste: inclui ou altera um funcionario
+/*/{Protheus.doc} SocTeste
+Rotina de teste: inclui um funcionário no SOC e, se rejeitado (400), tenta alterar.
+@type function
+@author Integracao SOC
+@since 13/11/2026
+@version 1.0
+@return nil
+@obs Executar apenas em homologação. Ajustar a matrícula de teste.
+@example
+U_SocTeste()
+/*/
 user function SocTeste()
     local oSvc := SocFuncionario():new()
     local oRet := oSvc:incluir(xFilial("SRA") + "000123")

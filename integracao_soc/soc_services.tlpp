@@ -1,7 +1,15 @@
 #include "tlpp-core.th"
 namespace custom.integration.soc
 
-// ---------- FUNCIONARIO (SRA) ----------
+/*/{Protheus.doc} SocFuncionario
+Serviço de integração de Funcionários (SRA). Chave: RA_FILIAL+RA_MAT.
+@type class
+@author Integracao SOC
+@since 13/11/2026
+@version 1.0
+@example
+oRet := SocFuncionario():new():incluir(xFilial("SRA") + "000123")
+/*/
 class SocFuncionario from SocServiceBase
     public method new() as object
     protected method seekRecord(cChave as character) as logical
@@ -9,15 +17,37 @@ class SocFuncionario from SocServiceBase
     protected method required() as array
 endclass
 
-method SocFuncionario::new() as object
+/*/{Protheus.doc} SocFuncionario::new
+Construtor (alias SRA, recurso funcionario).
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@return object, Instância
+/*/
+method new() as object class SocFuncionario
     _Super:new("SRA", "funcionario")
 return self
 
-method SocFuncionario::seekRecord(cChave as character) as logical
+/*/{Protheus.doc} SocFuncionario::seekRecord
+Posiciona a SRA (índice 1).
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@param cChave, character, RA_FILIAL+RA_MAT
+@return logical, .T. se encontrou
+/*/
+method seekRecord(cChave as character) as logical class SocFuncionario
     DbSelectArea("SRA"); SRA->(DbSetOrder(1))
 return SRA->(DbSeek(cChave))
 
-method SocFuncionario::buildPayload() as object
+/*/{Protheus.doc} SocFuncionario::buildPayload
+Monta o JSON do funcionário aplicando De/Para de filial, cargo, setor, turno e situação.
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@return object, JsonObject do payload
+/*/
+method buildPayload() as object class SocFuncionario
     local o := JsonObject():New()
     o['codigoEmpresa']  := SocMapper():toSoc("FIL", SRA->RA_FILIAL, "")
     o['matricula']      := AllTrim(SRA->RA_MAT)
@@ -35,88 +65,253 @@ method SocFuncionario::buildPayload() as object
     o['situacao']       := SocMapper():toSoc("SITUACAO", iif(Empty(SRA->RA_SITFOLH),"A",SRA->RA_SITFOLH), "ATIVO")
 return o
 
-method SocFuncionario::required() as array
+/*/{Protheus.doc} SocFuncionario::required
+Campos obrigatórios do payload.
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@return array, Propriedades obrigatórias
+/*/
+method required() as array class SocFuncionario
 return {"matricula","nome","cpf","dataAdmissao","codigoCargo","codigoSetor"}
 
-// ---------- CARGO (SRJ) ----------
+/*/{Protheus.doc} SocCargo
+Serviço de integração de Cargos (SRJ). Chave: RJ_FILIAL+RJ_FUNCAO.
+@type class
+@author Integracao SOC
+@since 13/11/2026
+@version 1.0
+@example
+oRet := SocCargo():new():incluir(xFilial("SRJ") + "00001")
+/*/
 class SocCargo from SocServiceBase
     public method new() as object
     protected method seekRecord(cChave as character) as logical
     protected method buildPayload() as object
     protected method required() as array
 endclass
-method SocCargo::new() as object
+
+/*/{Protheus.doc} SocCargo::new
+Construtor (alias SRJ, recurso cargo).
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@return object, Instância
+/*/
+method new() as object class SocCargo
     _Super:new("SRJ", "cargo")
 return self
-method SocCargo::seekRecord(cChave as character) as logical
+
+/*/{Protheus.doc} SocCargo::seekRecord
+Posiciona a SRJ (índice 1).
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@param cChave, character, RJ_FILIAL+RJ_FUNCAO
+@return logical, .T. se encontrou
+/*/
+method seekRecord(cChave as character) as logical class SocCargo
     DbSelectArea("SRJ"); SRJ->(DbSetOrder(1))
 return SRJ->(DbSeek(cChave))
-method SocCargo::buildPayload() as object
+
+/*/{Protheus.doc} SocCargo::buildPayload
+Monta o JSON do cargo (código, nome, CBO).
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@return object, JsonObject do payload
+/*/
+method buildPayload() as object class SocCargo
     local o := JsonObject():New()
     o['codigo'] := SocMapper():toSoc("CARGO", SRJ->RJ_FUNCAO, "")
     o['nome']   := AllTrim(SRJ->RJ_DESC)
     o['cbo']    := AllTrim(SRJ->RJ_CODCBO)
 return o
-method SocCargo::required() as array
+
+/*/{Protheus.doc} SocCargo::required
+Campos obrigatórios do payload.
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@return array, Propriedades obrigatórias
+/*/
+method required() as array class SocCargo
 return {"codigo","nome"}
 
-// ---------- TURNO (SR6) ----------
+/*/{Protheus.doc} SocTurno
+Serviço de integração de Turnos (SR6). Chave: R6_FILIAL+R6_TURNO.
+@type class
+@author Integracao SOC
+@since 13/11/2026
+@version 1.0
+@example
+oRet := SocTurno():new():incluir(xFilial("SR6") + "001")
+/*/
 class SocTurno from SocServiceBase
     public method new() as object
     protected method seekRecord(cChave as character) as logical
     protected method buildPayload() as object
     protected method required() as array
 endclass
-method SocTurno::new() as object
+
+/*/{Protheus.doc} SocTurno::new
+Construtor (alias SR6, recurso turno).
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@return object, Instância
+/*/
+method new() as object class SocTurno
     _Super:new("SR6", "turno")
 return self
-method SocTurno::seekRecord(cChave as character) as logical
+
+/*/{Protheus.doc} SocTurno::seekRecord
+Posiciona a SR6 (índice 1).
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@param cChave, character, R6_FILIAL+R6_TURNO
+@return logical, .T. se encontrou
+/*/
+method seekRecord(cChave as character) as logical class SocTurno
     DbSelectArea("SR6"); SR6->(DbSetOrder(1))
 return SR6->(DbSeek(cChave))
-method SocTurno::buildPayload() as object
+
+/*/{Protheus.doc} SocTurno::buildPayload
+Monta o JSON do turno (código e descrição).
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@return object, JsonObject do payload
+/*/
+method buildPayload() as object class SocTurno
     local o := JsonObject():New()
     o['codigo']    := SocMapper():toSoc("TURNO", SR6->R6_TURNO, "")
     o['descricao'] := AllTrim(SR6->R6_DESC)
 return o
-method SocTurno::required() as array
+
+/*/{Protheus.doc} SocTurno::required
+Campos obrigatórios do payload.
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@return array, Propriedades obrigatórias
+/*/
+method required() as array class SocTurno
 return {"codigo","descricao"}
 
-// ---------- CENTRO DE CUSTO / SETOR (SI3) ----------
+/*/{Protheus.doc} SocSetor
+Serviço de integração de Centro de Custo/Setor (SI3). Chave: I3_FILIAL+I3_CUSTO.
+@type class
+@author Integracao SOC
+@since 13/11/2026
+@version 1.0
+@obs Em releases atuais o centro de custo pode estar na CTT; ajustar se necessário.
+@example
+oRet := SocSetor():new():incluir(xFilial("SI3") + "100")
+/*/
 class SocSetor from SocServiceBase
     public method new() as object
     protected method seekRecord(cChave as character) as logical
     protected method buildPayload() as object
     protected method required() as array
 endclass
-method SocSetor::new() as object
+
+/*/{Protheus.doc} SocSetor::new
+Construtor (alias SI3, recurso setor).
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@return object, Instância
+/*/
+method new() as object class SocSetor
     _Super:new("SI3", "setor")
 return self
-method SocSetor::seekRecord(cChave as character) as logical
+
+/*/{Protheus.doc} SocSetor::seekRecord
+Posiciona a SI3 (índice 1).
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@param cChave, character, I3_FILIAL+I3_CUSTO
+@return logical, .T. se encontrou
+/*/
+method seekRecord(cChave as character) as logical class SocSetor
     DbSelectArea("SI3"); SI3->(DbSetOrder(1))
 return SI3->(DbSeek(cChave))
-method SocSetor::buildPayload() as object
+
+/*/{Protheus.doc} SocSetor::buildPayload
+Monta o JSON do setor (código, nome, unidade).
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@return object, JsonObject do payload
+/*/
+method buildPayload() as object class SocSetor
     local o := JsonObject():New()
     o['codigo']        := SocMapper():toSoc("CC", SI3->I3_CUSTO, "")
     o['nome']          := AllTrim(SI3->I3_DESC)
     o['codigoUnidade'] := SocMapper():toSoc("FIL", SI3->I3_FILIAL, "")
 return o
-method SocSetor::required() as array
+
+/*/{Protheus.doc} SocSetor::required
+Campos obrigatórios do payload.
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@return array, Propriedades obrigatórias
+/*/
+method required() as array class SocSetor
 return {"codigo","nome"}
 
-// ---------- FILIAL / UNIDADE (SM0) ----------
+/*/{Protheus.doc} SocFilial
+Serviço de integração de Filiais/Unidades (SM0). Chave: M0_CODFIL.
+@type class
+@author Integracao SOC
+@since 13/11/2026
+@version 1.0
+@obs SM0 não é tabela do dicionário; validar o posicionamento na release em uso.
+@example
+oRet := SocFilial():new():incluir("01")
+/*/
 class SocFilial from SocServiceBase
     public method new() as object
     protected method seekRecord(cChave as character) as logical
     protected method buildPayload() as object
     protected method required() as array
 endclass
-method SocFilial::new() as object
+
+/*/{Protheus.doc} SocFilial::new
+Construtor (alias SM0, recurso unidade).
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@return object, Instância
+/*/
+method new() as object class SocFilial
     _Super:new("SM0", "unidade")
 return self
-method SocFilial::seekRecord(cChave as character) as logical
+
+/*/{Protheus.doc} SocFilial::seekRecord
+Verifica a existência da filial via FWArrFilAtu.
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@param cChave, character, Código da filial (M0_CODFIL)
+@return logical, .T. se encontrou
+/*/
+method seekRecord(cChave as character) as logical class SocFilial
     local aFil := FWArrFilAtu(cEmpAnt, AllTrim(cChave))
 return Len(aFil) > 0
-method SocFilial::buildPayload() as object
+
+/*/{Protheus.doc} SocFilial::buildPayload
+Monta o JSON da unidade (código, nome, CNPJ, endereço).
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@return object, JsonObject do payload
+/*/
+method buildPayload() as object class SocFilial
     local o := JsonObject():New()
     o['codigo']   := SocMapper():toSoc("FIL", AllTrim(SM0->M0_CODFIL), "")
     o['nome']     := AllTrim(SM0->M0_FILIAL)
@@ -126,24 +321,65 @@ method SocFilial::buildPayload() as object
     o['uf']       := AllTrim(SM0->M0_ESTCOB)
     o['cep']      := SocMapper():onlyNum(SM0->M0_CEPCOB)
 return o
-method SocFilial::required() as array
+
+/*/{Protheus.doc} SocFilial::required
+Campos obrigatórios do payload.
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@return array, Propriedades obrigatórias
+/*/
+method required() as array class SocFilial
 return {"codigo","nome","cnpj"}
 
-// ---------- RESCISAO / AFASTAMENTO (SRA/SRG) ----------
+/*/{Protheus.doc} SocDesligamento
+Serviço de integração de Rescisão/Afastamento (SRG/SRA). Chave: RG_FILIAL+RG_MAT.
+@type class
+@author Integracao SOC
+@since 13/11/2026
+@version 1.0
+@example
+oRet := SocDesligamento():new():incluir(xFilial("SRG") + "000123")
+/*/
 class SocDesligamento from SocServiceBase
     public method new() as object
     protected method seekRecord(cChave as character) as logical
     protected method buildPayload() as object
     protected method required() as array
 endclass
-method SocDesligamento::new() as object
+
+/*/{Protheus.doc} SocDesligamento::new
+Construtor (alias SRG, recurso afastamento).
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@return object, Instância
+/*/
+method new() as object class SocDesligamento
     _Super:new("SRG", "afastamento")
 return self
-method SocDesligamento::seekRecord(cChave as character) as logical
+
+/*/{Protheus.doc} SocDesligamento::seekRecord
+Posiciona SRG e SRA (índice 1).
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@param cChave, character, RG_FILIAL+RG_MAT
+@return logical, .T. se ambas foram encontradas
+/*/
+method seekRecord(cChave as character) as logical class SocDesligamento
     DbSelectArea("SRG"); SRG->(DbSetOrder(1))
     DbSelectArea("SRA"); SRA->(DbSetOrder(1))
 return SRG->(DbSeek(cChave)) .and. SRA->(DbSeek(cChave))
-method SocDesligamento::buildPayload() as object
+
+/*/{Protheus.doc} SocDesligamento::buildPayload
+Monta o JSON do desligamento (matrícula, CPF, data, motivo).
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@return object, JsonObject do payload
+/*/
+method buildPayload() as object class SocDesligamento
     local o := JsonObject():New()
     o['matricula']        := AllTrim(SRG->RG_MAT)
     o['cpf']              := SocMapper():onlyNum(SRA->RA_CIC)
@@ -151,5 +387,13 @@ method SocDesligamento::buildPayload() as object
     o['dataDesligamento'] := SocMapper():fmtDate(DtoS(SRG->RG_DATADEM))
     o['motivo']           := SocMapper():toSoc("MOTRES", SRG->RG_TIPORES, "")
 return o
-method SocDesligamento::required() as array
+
+/*/{Protheus.doc} SocDesligamento::required
+Campos obrigatórios do payload.
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@return array, Propriedades obrigatórias
+/*/
+method required() as array class SocDesligamento
 return {"matricula","dataDesligamento"}

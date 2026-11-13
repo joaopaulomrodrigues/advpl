@@ -1,6 +1,14 @@
 #include "tlpp-core.th"
 namespace custom.integration.soc
 
+/*/{Protheus.doc} SocServiceBase
+Classe base dos serviços de integração. Implementa o fluxo comum (posicionar, montar payload, validar, enviar).
+@type class
+@author Integracao SOC
+@since 13/11/2026
+@version 1.0
+@obs Subclasses sobrescrevem seekRecord, buildPayload e required.
+/*/
 class SocServiceBase
     protected data cAlias    as character
     protected data cResource as character
@@ -18,23 +26,69 @@ class SocServiceBase
     protected method keyOf() as character
 endclass
 
-method SocServiceBase::new(cAlias as character, cResource as character) as object
+/*/{Protheus.doc} SocServiceBase::new
+Construtor.
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@param cAlias, character, Alias da tabela de origem
+@param cResource, character, Recurso (endpoint) no SOC
+@return object, Instância
+/*/
+method new(cAlias as character, cResource as character) as object class SocServiceBase
     ::cAlias    := cAlias
     ::cResource := cResource
     ::cKey      := ""
     ::oClient   := SocClient():new()
 return self
 
-method SocServiceBase::incluir(cChave as character) as object
+/*/{Protheus.doc} SocServiceBase::incluir
+Inclui o registro no SOC (POST).
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@param cChave, character, Chave do registro no Protheus (índice 1)
+@return object, JsonObject padronizado
+@example
+oRet := SocCargo():new():incluir(xFilial("SRJ") + "000001")
+/*/
+method incluir(cChave as character) as object class SocServiceBase
 return ::execute("POST", cChave)
 
-method SocServiceBase::alterar(cChave as character) as object
+/*/{Protheus.doc} SocServiceBase::alterar
+Altera o registro no SOC (PUT).
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@param cChave, character, Chave do registro no Protheus (índice 1)
+@return object, JsonObject padronizado
+@example
+oRet := SocCargo():new():alterar(xFilial("SRJ") + "000001")
+/*/
+method alterar(cChave as character) as object class SocServiceBase
 return ::execute("PUT", cChave)
 
-method SocServiceBase::keyOf() as character
+/*/{Protheus.doc} SocServiceBase::keyOf
+Chave usada na URL das alterações.
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@return character, Chave do registro
+/*/
+method keyOf() as character class SocServiceBase
 return AllTrim(::cKey)
 
-method SocServiceBase::execute(cVerb as character, cChave as character) as object
+/*/{Protheus.doc} SocServiceBase::execute
+Fluxo comum: posiciona, monta payload, valida obrigatórios, envia e registra log.
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@param cVerb, character, POST ou PUT
+@param cChave, character, Chave do registro
+@return object, JsonObject padronizado
+@obs Preserva a área de trabalho com GetArea/RestArea.
+/*/
+method execute(cVerb as character, cChave as character) as object class SocServiceBase
     local oPay, oRet, aReq, nI
     local cPath := AllTrim(SuperGetMV("MV_SOCPATH",.F.,"/api/v1")) + "/" + ::cResource
     local aArea := GetArea()
@@ -68,9 +122,33 @@ method SocServiceBase::execute(cVerb as character, cChave as character) as objec
     endtry
 return oRet
 
-method SocServiceBase::buildPayload() as object
+/*/{Protheus.doc} SocServiceBase::buildPayload
+Monta o JsonObject de envio. Sobrescrever na subclasse.
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@return object, JsonObject do payload
+/*/
+method buildPayload() as object class SocServiceBase
 return JsonObject():New()
-method SocServiceBase::seekRecord(cChave as character) as logical
+
+/*/{Protheus.doc} SocServiceBase::seekRecord
+Posiciona a tabela de origem. Sobrescrever na subclasse.
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@param cChave, character, Chave do registro
+@return logical, .T. se encontrou
+/*/
+method seekRecord(cChave as character) as logical class SocServiceBase
 return .F.
-method SocServiceBase::required() as array
+
+/*/{Protheus.doc} SocServiceBase::required
+Lista as propriedades JSON obrigatórias. Sobrescrever na subclasse.
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@return array, Nomes das propriedades obrigatórias
+/*/
+method required() as array class SocServiceBase
 return {}

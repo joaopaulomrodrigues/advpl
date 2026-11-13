@@ -1,12 +1,32 @@
 #include "tlpp-core.th"
 namespace custom.integration.soc
 
+/*/{Protheus.doc} SocResult
+Fábrica do JsonObject de retorno padronizado da integração Protheus x SOC.
+@type class
+@author Integracao SOC
+@since 13/11/2026
+@version 1.0
+@obs Propriedades: success (logical), message (character), id (character), http (numeric), data/raw.
+/*/
 class SocResult
     static method ok(cMsg as character, cId as character, oRaw as object) as object
     static method fail(cMsg as character, nHttp as numeric, cRaw as character) as object
 endclass
 
-static method SocResult::ok(cMsg as character, cId as character, oRaw as object) as object
+/*/{Protheus.doc} SocResult::ok
+Monta o retorno de sucesso.
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@param cMsg, character, Mensagem descritiva
+@param cId, character, ID/código devolvido pelo SOC
+@param oRaw, object, JsonObject com a resposta do SOC
+@return object, JsonObject com success=.T.
+@example
+oRet := SocResult():ok("OK", "123", oResp)
+/*/
+static method ok(cMsg as character, cId as character, oRaw as object) as object class SocResult
     local oRet := JsonObject():New()
     oRet['success'] := .T.
     oRet['message'] := cMsg
@@ -15,7 +35,19 @@ static method SocResult::ok(cMsg as character, cId as character, oRaw as object)
     oRet['data']    := oRaw
 return oRet
 
-static method SocResult::fail(cMsg as character, nHttp as numeric, cRaw as character) as object
+/*/{Protheus.doc} SocResult::fail
+Monta o retorno de falha.
+@type method
+@author Integracao SOC
+@since 13/11/2026
+@param cMsg, character, Mensagem de erro
+@param nHttp, numeric, Status HTTP (0 para falha local)
+@param cRaw, character, Corpo bruto da resposta
+@return object, JsonObject com success=.F.
+@example
+oRet := SocResult():fail("Erro", 500, cBody)
+/*/
+static method fail(cMsg as character, nHttp as numeric, cRaw as character) as object class SocResult
     local oRet := JsonObject():New()
     oRet['success'] := .F.
     oRet['message'] := cMsg
