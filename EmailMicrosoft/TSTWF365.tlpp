@@ -1,0 +1,54 @@
+#include "tlpp-core.th"
+
+namespace custom.workflow.test
+
+using namespace custom.workflow.mail
+
+/*/{Protheus.doc} TSTWF365
+Exemplo de notificacao de Workflow enviada via Microsoft Graph, em substituicao
+ao disparo SMTP do TWFProcess (oProcess:Start()). Monte o HTML normalmente
+(template/oHtml:HtmlFile) e entregue o corpo final a classe Office365GraphMail.
+
+@type function
+@author João Paulo
+@since 16/11/2026
+@return logical, .T. se o e-mail foi aceito pelo Graph
+/*/
+User Function TSTWF365()
+
+    local lOk    as logical   := .F.
+    local cHtml  as character := ""
+    local cMsg   as character := ""
+    local aFiles as array     := {}
+    local oMail  as object
+
+    Try
+
+        cHtml := "<html><body style='font-family:Arial,sans-serif'>"
+        cHtml += "<h3>Aprovação de Pedido de Compra</h3>"
+        cHtml += "<p>O pedido <b>000123</b> aguarda sua aprovação.</p>"
+        cHtml += "</body></html>"
+
+        // Anexo opcional (relativo ao RootPath) ou {caminho, nome}:
+        // aAdd(aFiles, {"\workflow\pedido_000123.pdf", "Pedido_000123.pdf"})
+
+        // Parametros vazios => fallback para MV_XGTENAN / MV_XGCLID / MV_XGCLSEC / MV_XGSENDR
+        oMail := Office365GraphMail():New("", "", "", "")
+
+        lOk := oMail:sendMail("aprovador@suaempresa.com.br", ;
+                              "Workflow - Pedido 000123 aguardando aprovação", ;
+                              cHtml, "", "", aFiles)
+
+        If lOk
+            FWLogMsg("INFO", , "GRAPHMAIL", "TSTWF365", "", "01", "E-mail aceito pelo Graph (HTTP 202).", 0, 0, {})
+        Else
+            cMsg := oMail:getLastError()
+            FWLogMsg("ERROR", , "GRAPHMAIL", "TSTWF365", "", "01", cMsg, 0, 0, {})
+        EndIf
+
+    Catch oError
+        FWLogMsg("ERROR", , "GRAPHMAIL", "TSTWF365", "", "01", "Excecao: " + oError:Description, 0, 0, {})
+        lOk := .F.
+    EndTry
+
+return lOk

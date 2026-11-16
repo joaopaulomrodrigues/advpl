@@ -1,0 +1,644 @@
+#include "tlpp-core.th"
+#include "fileio.ch"
+
+#define GRAPH_LOGIN_URL   "https://login.microsoftonline.com"
+#define GRAPH_API_URL     "https://graph.microsoft.com"
+#define GRAPH_SCOPE       "https://graph.microsoft.com/.default"
+#define GRAPH_MAX_ATT     3145728   // 3 MB por anexo (limite do fileAttachment inline)
+
+namespace custom.workflow.mail
+
+/*/{Protheus.doc} Office365GraphMail
+Classe para envio de e-mails via Microsoft Graph API (/sendMail), utilizando
+OAuth 2.0 Client Credentials Flow. Substitui o envio SMTP com Basic Auth,
+bloqueado pela Microsoft no Exchange Online / Office 365.
+
+Parametros SX6 utilizados como fallback do construtor:
+MV_XGTENAN - Tenant ID (Directory ID)
+MV_XGCLID  - Client ID (Application ID)
+MV_XGCLSEC - Client Secret
+MV_XGSENDR - E-mail (UPN) da caixa postal remetente
+
+@type class
+@author João Paulo
+@since 16/11/2026
+@version 1.0
+/*/
+class Office365GraphMail
+
+    private data cTenantId     as character
+    private data cClientId     as character
+    private data cClientSecret as character
+    private data cSenderEmail  as character
+    private data cAccessToken  as character
+    private data cLastError    as character
+
+    public  method new(cTenantId as character, cClientId as character, cClientSecret as character, cSenderEmail as character) constructor
+    public  method sendMail(cTo as character, cSubject as character, cBodyHtml as character, cCc as character, cBcc as character, aAttachments as array) as logical
+    public  method getLastError() as character
+
+    private method getAccessToken() as character
+    private method postSendMail(cPayload as character) as numeric
+    private method buildPayload(cTo as character, cSubject as character, cBodyHtml as character, cCc as character, cBcc as character, aAttachments as array) as character
+    private method buildRecipients(cList as character) as array
+    private method buildAttachments(aAttachments as array) as array
+    private method readFileBase64(cFile as character) as character
+    private method parseGraphError(cResult as character) as character
+    private method urlEncode(cValue as character) as character
+    private method toUtf8(cText as character) as character
+    private method setError(cMessage as character) as logical
+
+endclass
+
+/*/{Protheus.doc} Office365GraphMail::new
+Construtor. Parametros vazios assumem os valores dos parametros SX6 (MV_XG...).
+
+@type method
+@author João Paulo
+@since 16/11/2026
+@param cTenantId, character, Tenant ID do Entra ID
+@param cClientId, character, Client ID do App Registration
+@param cClientSecret, character, Client Secret do App Registration
+@param cSenderEmail, character, Caixa postal remetente (UPN)
+@return object, Instancia da classe
+/*/
+method new(cTenantId as character, cClientId as character, cClientSecret as character, cSenderEmail as character) class Office365GraphMail
+
+    self:cTenantId     := AllTrim(cTenantId)
+    self:cClientId     := AllTrim(cClientId)
+    self:cClientSecret := AllTrim(cClientSecret)
+    self:cSenderEmail  := AllTrim(cSenderEmail)
+    self:cAccessToken  := ""
+    self:cLastError    := ""
+
+    If Empty(self:cTenantId)
+        self:cTenantId := AllTrim(SuperGetMV("MV_XGTENAN", .F., ""))
+    EndIf
+
+    If Empty(self:cClientId)
+        self:cClientId := AllTrim(SuperGetMV("MV_XGCLID", .F., ""))
+    EndIf
+
+    If Empty(self:cClientSecret)
+        self:cClientSecret := AllTrim(SuperGetMV("MV_XGCLSEC", .F., ""))
+    EndIf
+
+    If Empty(self:cSenderEmail)
+        self:cSenderEmail := AllTrim(SuperGetMV("MV_XGSENDR", .F., ""))
+    EndIf
+
+return self
+
+/*/{Protheus.doc} Office365GraphMail::sendMail
+Envia um e-mail HTML via Microsoft Graph. Sucesso = HTTP 202 Accepted.
+Destinatarios multiplos devem ser separados por ";" ou ",".
+Anexos: array de caracteres (caminho) ou de {caminho, nome}, relativos ao RootPath.
+
+@type method
+@author João Paulo
+@since 16/11/2026
+@param cTo, character, Destinatarios (Para)
+@param cSubject, character, Assunto
+@param cBodyHtml, character, Corpo em HTML
+@param cCc, character, Copia (opcional - informe "")
+@param cBcc, character, Copia oculta (opcional - informe "")
+@param aAttachments, array, Anexos (opcional - informe {})
+@return logical, .T. se o Graph aceitou o envio
+/*/
+method sendMail(cTo as character, cSubject as character, cBodyHtml as character, cCc as character, cBcc as character, aAttachments as array) as logical class Office365GraphMail
+
+    local lRet     as logical   := .F.
+    local cPayload as character := ""
+    local nHttp    as numeric   := 0
+
+    Try
+
+        self:cLastError := ""
+
+        If Empty(self:cSenderEmail)
+            self:setError("Remetente (cSenderEmail / MV_XGSENDR) nao informado.")
+        ElseIf Empty(cTo)
+            self:setError("Destinatario (cTo) nao informado.")
+        Else
+
+            If Empty(self:cAccessToken)
+                self:getAccessToken()
+            EndIf
+
+            If !Empty(self:cAccessToken)
+
+                cPayload := self:buildPayload(cTo, cSubject, cBodyHtml, cCc, cBcc, aAttachments)
+
+                If !Empty(cPayload)
+
+                    nHttp := self:postSendMail(cPayload)
+
+                    // Token expirado/invalido: renova uma unica vez e reenvia
+                    If nHttp == 401
+                        self:cAccessToken := ""
+                        self:cLastError   := ""
+                        self:getAccessToken()
+
+                        If !Empty(self:cAccessToken)
+                            nHttp := self:postSendMail(cPayload)
+                        EndIf
+                    EndIf
+
+                    lRet := (nHttp == 202)
+
+                EndIf
+
+            EndIf
+
+        EndIf
+
+    Catch oError
+        self:setError("Excecao em SendMail: " + oError:Description)
+        lRet := .F.
+    EndTry
+
+return lRet
+
+/*/{Protheus.doc} Office365GraphMail::getLastError
+Retorna o ultimo erro (HTTP ou JSON da Microsoft) ocorrido na instancia.
+
+@type method
+@author João Paulo
+@since 16/11/2026
+@return character, Descricao detalhada do erro (vazio se nao houve erro)
+/*/
+method getLastError() as character class Office365GraphMail
+return self:cLastError
+
+/*/{Protheus.doc} Office365GraphMail::getAccessToken
+Obtem o access_token via POST em /{tenant}/oauth2/v2.0/token
+(grant_type=client_credentials) e o armazena em cAccessToken.
+
+@type method
+@author João Paulo
+@since 16/11/2026
+@return character, Access token (vazio em caso de falha - ver GetLastError)
+/*/
+method getAccessToken() as character class Office365GraphMail
+
+    local cToken  as character := ""
+    local cBody   as character := ""
+    local cResult as character := ""
+    local nHttp   as numeric   := 0
+    local aHeader as array     := {}
+    local oRest   as object
+    local oJson   as object
+    local xResult
+    local xParse
+
+    Try
+
+        If Empty(self:cTenantId) .Or. Empty(self:cClientId) .Or. Empty(self:cClientSecret)
+            self:setError("Tenant ID, Client ID ou Client Secret nao informados.")
+        Else
+
+            cBody := "client_id="       + self:urlEncode(self:cClientId)
+            cBody += "&scope="          + self:urlEncode(GRAPH_SCOPE)
+            cBody += "&client_secret="  + self:urlEncode(self:cClientSecret)
+            cBody += "&grant_type=client_credentials"
+
+            aAdd(aHeader, "Content-Type: application/x-www-form-urlencoded")
+            aAdd(aHeader, "Accept: application/json")
+
+            oRest := FWRest():New(GRAPH_LOGIN_URL)
+            oRest:SetPath("/" + AllTrim(self:cTenantId) + "/oauth2/v2.0/token")
+            oRest:SetPostParams(cBody)
+            oRest:Post(aHeader)
+
+            nHttp   := Val(cValToChar(oRest:GetHTTPCode()))
+            xResult := oRest:GetResult()
+
+            If ValType(xResult) == "C"
+                cResult := xResult
+            EndIf
+
+            If nHttp == 200 .And. !Empty(cResult)
+
+                oJson  := JsonObject():New()
+                xParse := oJson:FromJson(cResult)
+
+                If ValType(xParse) == "U" .And. oJson:HasProperty("access_token")
+                    cToken := oJson["access_token"]
+                Else
+                    self:setError("Resposta do token invalida: " + cResult)
+                EndIf
+
+                FreeObj(oJson)
+
+            Else
+                self:setError("Falha ao obter token. HTTP " + cValToChar(nHttp) + " - " + ;
+                              self:parseGraphError(cResult) + " " + cValToChar(oRest:GetLastError()))
+            EndIf
+
+        EndIf
+
+    Catch oError
+        self:setError("Excecao em GetAccessToken: " + oError:Description)
+        cToken := ""
+    EndTry
+
+    self:cAccessToken := cToken
+
+return cToken
+
+/*/{Protheus.doc} Office365GraphMail::postSendMail
+Executa o POST em /v1.0/users/{sender}/sendMail com o token Bearer.
+
+@type method
+@author João Paulo
+@since 16/11/2026
+@param cPayload, character, JSON do endpoint sendMail
+@return numeric, Codigo HTTP retornado (202 = sucesso; 0 = falha de conexao)
+/*/
+method postSendMail(cPayload as character) as numeric class Office365GraphMail
+
+    local nHttp   as numeric   := 0
+    local cResult as character := ""
+    local aHeader as array     := {}
+    local oRest   as object
+    local xResult
+
+    Try
+
+        aAdd(aHeader, "Authorization: Bearer " + self:cAccessToken)
+        aAdd(aHeader, "Content-Type: application/json")
+        aAdd(aHeader, "Accept: application/json")
+
+        oRest := FWRest():New(GRAPH_API_URL)
+        oRest:SetPath("/v1.0/users/" + AllTrim(self:cSenderEmail) + "/sendMail")
+        oRest:SetPostParams(cPayload)
+        oRest:Post(aHeader)
+
+        // sendMail retorna 202 sem corpo: o status HTTP e o criterio de sucesso
+        nHttp := Val(cValToChar(oRest:GetHTTPCode()))
+
+        If nHttp <> 202
+            xResult := oRest:GetResult()
+
+            If ValType(xResult) == "C"
+                cResult := xResult
+            EndIf
+
+            self:setError("Falha no sendMail. HTTP " + cValToChar(nHttp) + " - " + ;
+                          self:parseGraphError(cResult) + " " + cValToChar(oRest:GetLastError()))
+        EndIf
+
+    Catch oError
+        self:setError("Excecao em PostSendMail: " + oError:Description)
+        nHttp := 0
+    EndTry
+
+return nHttp
+
+/*/{Protheus.doc} Office365GraphMail::buildPayload
+Monta o JSON exigido pelo endpoint /sendMail.
+
+@type method
+@author João Paulo
+@since 16/11/2026
+@return character, JSON serializado (vazio em caso de erro - ver GetLastError)
+/*/
+method buildPayload(cTo as character, cSubject as character, cBodyHtml as character, cCc as character, cBcc as character, aAttachments as array) as character class Office365GraphMail
+
+    local cJson as character := ""
+    local aTo   as array     := {}
+    local aCc   as array     := {}
+    local aBcc  as array     := {}
+    local aAtt  as array     := {}
+    local oRoot as object
+    local oMsg  as object
+    local oBody as object
+
+    aTo := self:buildRecipients(cTo)
+
+    If Len(aTo) == 0
+        self:setError("Nenhum destinatario valido em cTo.")
+    Else
+
+        aCc  := self:buildRecipients(cCc)
+        aBcc := self:buildRecipients(cBcc)
+        aAtt := self:buildAttachments(aAttachments)
+
+        If Empty(self:cLastError)
+
+            oBody := JsonObject():New()
+            oBody["contentType"] := "HTML"
+            oBody["content"]     := self:toUtf8(cBodyHtml)
+
+            oMsg := JsonObject():New()
+            oMsg["subject"]      := self:toUtf8(cSubject)
+            oMsg["body"]         := oBody
+            oMsg["toRecipients"] := aTo
+
+            If Len(aCc) > 0
+                oMsg["ccRecipients"] := aCc
+            EndIf
+
+            If Len(aBcc) > 0
+                oMsg["bccRecipients"] := aBcc
+            EndIf
+
+            If Len(aAtt) > 0
+                oMsg["attachments"] := aAtt
+            EndIf
+
+            oRoot := JsonObject():New()
+            oRoot["message"]         := oMsg
+            oRoot["saveToSentItems"] := .T.
+
+            cJson := oRoot:ToJson()
+
+            FreeObj(oRoot)
+
+        EndIf
+
+    EndIf
+
+return cJson
+
+/*/{Protheus.doc} Office365GraphMail::buildRecipients
+Converte lista de e-mails ("a@x.com;b@x.com") no array de recipients do Graph.
+
+@type method
+@author João Paulo
+@since 16/11/2026
+@param cList, character, E-mails separados por ";" ou ","
+@return array, Array de JsonObject {emailAddress:{address}}
+/*/
+method buildRecipients(cList as character) as array class Office365GraphMail
+
+    local aRet   as array     := {}
+    local aItems as array     := {}
+    local cAddr  as character := ""
+    local nX     as numeric   := 0
+    local oAddr  as object
+    local oItem  as object
+
+    If !Empty(cList)
+
+        aItems := StrTokArr(StrTran(cList, ",", ";"), ";")
+
+        For nX := 1 To Len(aItems)
+
+            cAddr := AllTrim(aItems[nX])
+
+            If !Empty(cAddr)
+                oAddr := JsonObject():New()
+                oAddr["address"] := cAddr
+
+                oItem := JsonObject():New()
+                oItem["emailAddress"] := oAddr
+
+                aAdd(aRet, oItem)
+            EndIf
+
+        Next nX
+
+    EndIf
+
+return aRet
+
+/*/{Protheus.doc} Office365GraphMail::buildAttachments
+Converte arquivos do Protheus (relativos ao RootPath) em fileAttachment Base64.
+
+@type method
+@author João Paulo
+@since 16/11/2026
+@param aAttachments, array, Itens "caminho" ou {"caminho", "nome no e-mail"}
+@return array, Array de JsonObject fileAttachment (vazio se erro/sem anexos)
+/*/
+method buildAttachments(aAttachments as array) as array class Office365GraphMail
+
+    local aRet    as array     := {}
+    local cFile   as character := ""
+    local cName   as character := ""
+    local cBase64 as character := ""
+    local cDrive  as character := ""
+    local cDir    as character := ""
+    local cNm     as character := ""
+    local cExt    as character := ""
+    local nX      as numeric   := 0
+    local oAtt    as object
+    local xItem
+
+    For nX := 1 To Len(aAttachments)
+
+        xItem := aAttachments[nX]
+        cFile := ""
+        cName := ""
+
+        If ValType(xItem) == "C"
+            cFile := AllTrim(xItem)
+        ElseIf ValType(xItem) == "A" .And. Len(xItem) >= 1
+            cFile := AllTrim(xItem[1])
+
+            If Len(xItem) >= 2 .And. ValType(xItem[2]) == "C"
+                cName := AllTrim(xItem[2])
+            EndIf
+        EndIf
+
+        If Empty(cFile)
+            Loop
+        EndIf
+
+        If Empty(cName)
+            SplitPath(cFile, @cDrive, @cDir, @cNm, @cExt)
+            cName := cNm + cExt
+        EndIf
+
+        cBase64 := self:readFileBase64(cFile)
+
+        If Empty(cBase64)
+            aRet := {}
+            Exit
+        EndIf
+
+        oAtt := JsonObject():New()
+        oAtt["@odata.type"]  := "#microsoft.graph.fileAttachment"
+        oAtt["name"]         := cName
+        oAtt["contentType"]  := "application/octet-stream"
+        oAtt["contentBytes"] := cBase64
+
+        aAdd(aRet, oAtt)
+
+    Next nX
+
+return aRet
+
+/*/{Protheus.doc} Office365GraphMail::readFileBase64
+Le um arquivo (relativo ao RootPath) e retorna seu conteudo em Base64.
+
+@type method
+@author João Paulo
+@since 16/11/2026
+@param cFile, character, Caminho do arquivo
+@return character, Conteudo Base64 (vazio em caso de erro)
+/*/
+method readFileBase64(cFile as character) as character class Office365GraphMail
+
+    local cRet    as character := ""
+    local cBuffer as character := ""
+    local nHandle as numeric   := -1
+    local nSize   as numeric   := 0
+    local nRead   as numeric   := 0
+
+    If !File(cFile)
+        self:setError("Anexo nao encontrado: " + cFile)
+    Else
+
+        nHandle := FOpen(cFile, FO_READ + FO_SHARED)
+
+        If nHandle < 0
+            self:setError("Nao foi possivel abrir o anexo " + cFile + " (FError " + cValToChar(FError()) + ").")
+        Else
+
+            nSize := FSeek(nHandle, 0, FS_END)
+            FSeek(nHandle, 0, FS_SET)
+
+            If nSize <= 0
+                self:setError("Anexo vazio: " + cFile)
+            ElseIf nSize > GRAPH_MAX_ATT
+                self:setError("Anexo excede o limite de 3 MB: " + cFile)
+            Else
+                cBuffer := Space(nSize)
+                nRead   := FRead(nHandle, @cBuffer, nSize)
+
+                If nRead == nSize
+                    cRet := Encode64(cBuffer)
+                Else
+                    self:setError("Leitura incompleta do anexo: " + cFile)
+                EndIf
+            EndIf
+
+            FClose(nHandle)
+
+        EndIf
+
+    EndIf
+
+return cRet
+
+/*/{Protheus.doc} Office365GraphMail::parseGraphError
+Extrai code/message do JSON de erro da Microsoft (Graph ou login).
+
+@type method
+@author João Paulo
+@since 16/11/2026
+@param cResult, character, Corpo da resposta HTTP
+@return character, Mensagem de erro formatada (ou o corpo bruto)
+/*/
+method parseGraphError(cResult as character) as character class Office365GraphMail
+
+    local cMsg   as character := ""
+    local oJson  as object
+    local oError as object
+    local xParse
+
+    If !Empty(cResult)
+
+        cMsg   := cResult
+        oJson  := JsonObject():New()
+        xParse := oJson:FromJson(cResult)
+
+        If ValType(xParse) == "U"
+
+            If oJson:HasProperty("error_description")
+                cMsg := cValToChar(oJson["error"]) + ": " + cValToChar(oJson["error_description"])
+            ElseIf oJson:HasProperty("error")
+                oError := oJson["error"]
+
+                If ValType(oError) == "J"
+                    cMsg := cValToChar(oError["code"]) + ": " + cValToChar(oError["message"])
+                EndIf
+            EndIf
+
+        EndIf
+
+        FreeObj(oJson)
+
+    EndIf
+
+return cMsg
+
+/*/{Protheus.doc} Office365GraphMail::urlEncode
+Percent-encode (RFC 3986) em UTF-8 para corpo x-www-form-urlencoded.
+
+@type method
+@author João Paulo
+@since 16/11/2026
+@param cValue, character, Valor a codificar
+@return character, Valor codificado
+/*/
+method urlEncode(cValue as character) as character class Office365GraphMail
+
+    local cRet  as character := ""
+    local cSrc  as character := ""
+    local cChar as character := ""
+    local cHex  as character := "0123456789ABCDEF"
+    local nX    as numeric   := 0
+    local nAsc  as numeric   := 0
+
+    cSrc := self:toUtf8(cValue)
+
+    For nX := 1 To Len(cSrc)
+
+        cChar := SubStr(cSrc, nX, 1)
+        nAsc  := Asc(cChar)
+
+        If (nAsc >= 48 .And. nAsc <= 57) .Or. (nAsc >= 65 .And. nAsc <= 90) .Or. ;
+           (nAsc >= 97 .And. nAsc <= 122) .Or. nAsc == 45 .Or. nAsc == 46 .Or. ;
+           nAsc == 95 .Or. nAsc == 126
+            cRet += cChar
+        Else
+            cRet += "%" + SubStr(cHex, Int(nAsc / 16) + 1, 1) + SubStr(cHex, Mod(nAsc, 16) + 1, 1)
+        EndIf
+
+    Next nX
+
+return cRet
+
+/*/{Protheus.doc} Office365GraphMail::toUtf8
+Converte texto CP-1252 para UTF-8 (mantem o original se a conversao falhar).
+
+@type method
+@author João Paulo
+@since 16/11/2026
+@param cText, character, Texto de origem
+@return character, Texto em UTF-8
+/*/
+method toUtf8(cText as character) as character class Office365GraphMail
+
+    local cRet as character := ""
+    local xTmp
+
+    cRet := cText
+
+    If !Empty(cText)
+        xTmp := EncodeUTF8(cText)
+
+        If ValType(xTmp) == "C" .And. !Empty(xTmp)
+            cRet := xTmp
+        EndIf
+    EndIf
+
+return cRet
+
+/*/{Protheus.doc} Office365GraphMail::setError
+Registra o erro da instancia (consultado via GetLastError).
+
+@type method
+@author João Paulo
+@since 16/11/2026
+@param cMessage, character, Mensagem de erro
+@return logical, Sempre .F.
+/*/
+method setError(cMessage as character) as logical class Office365GraphMail
+
+    self:cLastError := cMessage
+
+return .F.
